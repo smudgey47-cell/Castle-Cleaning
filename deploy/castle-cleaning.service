@@ -1,0 +1,16 @@
+[Unit]
+Description=Castle Cleaning Schedule
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=castle
+Group=castle
+EnvironmentFile=/etc/castle-cleaning.env
+ExecStart=/usr/bin/python3 /opt/castle-cleaning/server.py
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+
+[Install]
+WantedBy=multi-user.target

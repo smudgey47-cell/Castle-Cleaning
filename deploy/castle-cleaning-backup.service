@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up the Castle Cleaning database
+
+[Service]
+Type=oneshot
+User=castle
+Group=castle
+EnvironmentFile=/etc/castle-cleaning.env
+ExecStart=/opt/castle-cleaning/backup.sh
