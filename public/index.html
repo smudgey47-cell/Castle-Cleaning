@@ -448,15 +448,15 @@
               <input id="toiletCloseDueBy" type="time">
             </div>
             <div>
-              <label for="rotaSpreadsheetId">Castle rota spreadsheet ID or URL</label>
-              <input id="rotaSpreadsheetId" placeholder="Paste Castle Management Google Sheet ID or URL">
+              <label for="rotaSpreadsheetId">Rota link</label>
+              <input id="rotaSpreadsheetId" placeholder="http://SERVER-IP:8081/rota.csv">
             </div>
             <div>
-              <label for="rotaSheetName">Rota sheet name</label>
+              <label for="rotaSheetName">Rota sheet name (Google Sheets only)</label>
               <input id="rotaSheetName" placeholder="Shifts">
             </div>
             <div class="full-width">
-              <div class="help-text">The rota sheet must be shared as "Anyone with the link can view".</div>
+              <div class="help-text">Enter the Castle Management app's address, for example http://127.0.0.1:8081/rota.csv when both apps run on the same server. A Google Sheet link also works if it is shared as "Anyone with the link can view".</div>
               <div class="help-text" id="rotaStatus"></div>
             </div>
             <div class="full-width">

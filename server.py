@@ -39,10 +39,8 @@ ROTA_URL = "https://docs.google.com/spreadsheets/d/{id}/gviz/tq?{query}"
 ROTA_TIMEOUT_SECONDS = 5
 ROTA_FRESH_SECONDS = 300
 ROTA_RETRY_SECONDS = 60
-ROTA_ERROR_LABEL = (
-    "Could not read rota - check the link, and that the sheet is shared as "
-    "'Anyone with the link can view'"
-)
+ROTA_ERROR_LABEL = "Could not read rota - check the rota link in Manager View"
+ROTA_FEED_PATH = "/rota.csv"
 
 DEFAULT_SETTINGS = {
     "venueName": "Castle Sports Lounge",
@@ -329,6 +327,22 @@ def extract_spreadsheet_id(value):
     return match.group(1) if match else text
 
 
+def rota_feed_url(value):
+    """Return the Castle Management rota feed URL, or "" for a Google Sheet.
+
+    Accepts the full feed address or just the app's address, for example
+    http://192.168.1.20:8081, in which case /rota.csv is added.
+    """
+    text = clean_text(value)
+    if not re.match(r"^https?://", text, re.IGNORECASE) or "/spreadsheets/d/" in text:
+        return ""
+    parts = urllib.parse.urlsplit(text)
+    path = parts.path.rstrip("/")
+    if not path.lower().endswith(".csv"):
+        path += ROTA_FEED_PATH
+    return urllib.parse.urlunsplit((parts.scheme, parts.netloc, path, parts.query, ""))
+
+
 def normalise_date_text(value):
     text = clean_text(value)
     if not text:
@@ -403,6 +417,37 @@ def download_rota(spreadsheet_id, sheet_name):
     return body.decode("utf-8-sig")
 
 
+def download_rota_feed(url, date_key):
+    """Read today's shifts from the Castle Management app's /rota.csv."""
+    parts = urllib.parse.urlsplit(url)
+    query = urllib.parse.parse_qsl(parts.query)
+    query = [(key, value) for key, value in query if key != "date"] + [("date", date_key)]
+    full_url = urllib.parse.urlunsplit(
+        (parts.scheme, parts.netloc, parts.path, urllib.parse.urlencode(query), "")
+    )
+    request = urllib.request.Request(full_url, headers={"User-Agent": "castle-cleaning"})
+    try:
+        with urllib.request.urlopen(request, timeout=ROTA_TIMEOUT_SECONDS) as response:
+            content_type = response.headers.get("Content-Type", "")
+            body = response.read()
+    except OSError as error:
+        raise RotaError(f"Could not reach the Castle Management app at {url}: {error}") from error
+
+    if "text/csv" not in content_type:
+        raise RotaError(
+            f"{url} did not return a rota. Use the Castle Management address, "
+            "for example http://SERVER-IP:8081/rota.csv"
+        )
+    return body.decode("utf-8-sig")
+
+
+def fetch_rota_text(source, sheet_name, date_key):
+    feed_url = rota_feed_url(source)
+    if feed_url:
+        return download_rota_feed(feed_url, date_key)
+    return download_rota(extract_spreadsheet_id(source), sheet_name)
+
+
 class RotaCache:
     """Keeps the rota in memory so page loads do not wait on Google.
 
@@ -419,8 +464,8 @@ class RotaCache:
         with self.lock:
             self.entries.clear()
 
-    def get(self, spreadsheet_id, sheet_name, date_key):
-        key = (spreadsheet_id, sheet_name, date_key)
+    def get(self, source, sheet_name, date_key):
+        key = (source, sheet_name, date_key)
         with self.lock:
             entry = self.entries.get(key)
             if entry is None:
@@ -439,10 +484,10 @@ class RotaCache:
         return entry["staff"], entry["error"]
 
     def refresh(self, key):
-        spreadsheet_id, sheet_name, date_key = key
+        source, sheet_name, date_key = key
         error = ""
         try:
-            staff = staff_from_rota_csv(download_rota(spreadsheet_id, sheet_name), date_key)
+            staff = staff_from_rota_csv(fetch_rota_text(source, sheet_name, date_key), date_key)
             lifetime = ROTA_FRESH_SECONDS
         except RotaError as failure:
             log.warning("Rota read failed: %s", failure)
@@ -478,11 +523,12 @@ def staff_from_list(text):
 
 def get_staff_options(settings):
     """Return (staff options, rota problem). The saved staff list is the backup."""
-    spreadsheet_id = extract_spreadsheet_id(settings["rotaSpreadsheetId"])
+    raw_source = clean_text(settings["rotaSpreadsheetId"])
+    source = rota_feed_url(raw_source) or extract_spreadsheet_id(raw_source)
     sheet_name = clean_text(settings["rotaSheetName"]) or "Shifts"
     rota_staff, rota_error = [], ""
-    if spreadsheet_id:
-        rota_staff, rota_error = rota_cache.get(spreadsheet_id, sheet_name, today_key())
+    if source:
+        rota_staff, rota_error = rota_cache.get(source, sheet_name, today_key())
     if rota_staff:
         return rota_staff, rota_error
 

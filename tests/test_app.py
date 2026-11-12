@@ -307,6 +307,52 @@ class AppTest(unittest.TestCase):
         _, body = self.request("/api/settings", {"rotaSpreadsheetId": "abc"})
         self.assertIn("no Date column", body["data"]["rotaError"])
 
+    def start_fake_management(self, body, content_type="text/csv; charset=utf-8"):
+        seen = []
+
+        class FakeManagement(BaseHTTPRequestHandler):
+            def do_GET(self):
+                seen.append(self.path)
+                data = body.encode("utf-8")
+                self.send_response(200)
+                self.send_header("Content-Type", content_type)
+                self.send_header("Content-Length", str(len(data)))
+                self.end_headers()
+                self.wfile.write(data)
+
+            def log_message(self, *args):
+                pass
+
+        server = ThreadingHTTPServer(("127.0.0.1", 0), FakeManagement)
+        threading.Thread(target=server.serve_forever, daemon=True).start()
+        self.addCleanup(server.server_close)
+        self.addCleanup(server.shutdown)
+        return f"http://127.0.0.1:{server.server_address[1]}", seen
+
+    def test_rota_from_castle_management(self):
+        feed = (
+            "Date,Staff Name,Start Time,End Time,Shift 2 Start,Shift 2 End,Notes\n"
+            "2026-11-06,Sam Jones,OPEN,17:00,,,\n"
+            "2026-11-06,Alex Lee,17:00,CLOSE,,,\n"
+            "2026-11-06,Jo Away,HOLIDAY,,,,Approved holiday request\n"
+            "2026-11-06,Rest Day,OFF,,,,\n"
+        )
+        base, seen = self.start_fake_management(feed)
+        for link in (base, base + "/", base + "/rota.csv"):
+            app.rota_cache.clear()
+            seen.clear()
+            _, body = self.request("/api/settings", {"rotaSpreadsheetId": link})
+            staff = body["data"]["staffOptions"]
+            self.assertEqual([p["name"] for p in staff], ["Alex Lee", "Sam Jones"])
+            self.assertEqual(staff[1]["label"], "Sam Jones - OPEN-17:00")
+            self.assertEqual(body["data"]["rotaError"], "")
+            self.assertEqual(seen, [f"/rota.csv?date={TODAY}"])
+
+    def test_wrong_management_address_is_reported(self):
+        base, _ = self.start_fake_management("<html></html>", "text/html")
+        _, body = self.request("/api/settings", {"rotaSpreadsheetId": base})
+        self.assertIn("did not return a rota", body["data"]["rotaError"])
+
     def test_unreachable_rota_does_not_break_the_app(self):
         with mock.patch.object(app, "ROTA_URL", "http://127.0.0.1:9/{id}?{query}"):
             status, body = self.request("/api/settings", {"rotaSpreadsheetId": "abc"})

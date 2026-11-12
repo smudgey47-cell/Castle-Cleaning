@@ -36,12 +36,20 @@ your router.
 
 ## Rota
 
-In Manager View, paste the rota's Google Sheet link and tab name. The sheet must
-be shared as **Anyone with the link can view**, because the server has no Google
-login. Anyone holding that link can read the rota.
+The staff dropdown lists who is on the rota today. The rota comes from the
+Castle Management app. In Manager View, set **Rota link** to its address:
 
-The rota needs a `Date` column and a `Staff Name`, `Person` or `Name` column. The
-server re-reads it every 5 minutes.
+- `http://127.0.0.1:8081/rota.csv` when both apps run in the same container
+- `http://SERVER-IP:8081/rota.csv` when Castle Management is on another server
+
+Typing just the address (`http://SERVER-IP:8081`) also works. People who are off
+or on holiday that day are left out.
+
+A Google Sheet link still works instead. Enter the tab name as well, and share
+the sheet as **Anyone with the link can view**. The sheet needs a `Date` column
+and a `Staff Name`, `Person` or `Name` column.
+
+The server re-reads the rota every 5 minutes.
 
 The **Backup staff list** is used when the rota is not linked, cannot be read, or
 has nobody on today. Keep it filled in, as checks cannot be submitted without a
